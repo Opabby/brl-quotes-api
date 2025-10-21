@@ -2,7 +2,7 @@ import { Page } from 'puppeteer';
 import { Quote } from '../types';
 
 export async function scrapeWise(page: Page): Promise<Quote> {
-  const SOURCE_URL = 'https://wise.com/es/currency-converter/brl-to-usd-rate';
+  const SOURCE_URL = 'https://wise.com/es/currency-converter/usd-to-brl-rate?amount=1';
   const WISE_SPREAD_PERCENTAGE = 0.005; // 0.5% typical spread for Wise
 
   try {
@@ -11,29 +11,33 @@ export async function scrapeWise(page: Page): Promise<Quote> {
       timeout: 30000
     });
 
-
+    // Wait for the rate to be visible on the page
     await page.waitForFunction(
       () => {
         const text = document.body.innerText;
-        return text.includes('BRL') && text.includes('USD') && text.includes('=');
+        return text.includes('USD') && text.includes('BRL') && text.includes('=');
       },
       { timeout: 10000 }
     );
 
     const rateData = await page.evaluate(() => {
+      // Strategy 1: Look for the mid-market rate container
       let rateElement = document.querySelector('[class*="midMarketRate"] span[dir="ltr"]');
 
+      // Strategy 2: Find spans with dir="ltr" containing the rate pattern
       if (!rateElement) {
         const spans = document.querySelectorAll('span[dir="ltr"]');
         for (const span of spans) {
           const text = span.textContent || '';
-          if (text.includes('BRL') && text.includes('USD') && text.includes('=')) {
+          // Looking for pattern like "$1 USD = 5,385 BRL" or "5,385 BRL"
+          if (text.includes('USD') && text.includes('BRL') && text.includes('=')) {
             rateElement = span;
             break;
           }
         }
       }
 
+      // Strategy 3: Tree walker to find text nodes
       if (!rateElement) {
         const walker = document.createTreeWalker(
           document.body,
@@ -44,7 +48,7 @@ export async function scrapeWise(page: Page): Promise<Quote> {
         let node;
         while ((node = walker.nextNode())) {
           const text = node.textContent || '';
-          if (text.includes('BRL') && text.includes('USD') && text.includes('=')) {
+          if (text.includes('USD') && text.includes('BRL') && text.includes('=')) {
             rateElement = node.parentElement;
             break;
           }
@@ -57,11 +61,14 @@ export async function scrapeWise(page: Page): Promise<Quote> {
 
       const rateText = rateElement.textContent?.trim() || '';
       
-      const match = rateText.match(/=\s*([\d,\.]+)\s*USD/i);
+      // Parse rate from text like "$1 USD = 5,385 BRL" or "= 5,385 BRL"
+      // The rate represents how many BRL you get for 1 USD
+      const match = rateText.match(/=\s*([\d,\.]+)\s*BRL/i);
       if (!match) {
         throw new Error(`Could not parse rate from text: "${rateText}"`);
       }
 
+      // Replace comma with dot for decimal point (Spanish format uses comma)
       const rateString = match[1].replace(',', '.');
       const rateValue = parseFloat(rateString);
       
@@ -75,9 +82,12 @@ export async function scrapeWise(page: Page): Promise<Quote> {
       };
     });
 
+    // The rate from Wise is USD to BRL (how many BRL per 1 USD)
+    // For buy_price: you BUY USD with BRL (so you need more BRL per USD)
+    // For sell_price: you SELL USD for BRL (so you get less BRL per USD)
     const midRate = rateData.rate;
-    const buyPrice = midRate * (1 - WISE_SPREAD_PERCENTAGE);
-    const sellPrice = midRate * (1 + WISE_SPREAD_PERCENTAGE);
+    const buyPrice = midRate * (1 + WISE_SPREAD_PERCENTAGE);  // Buy USD costs more BRL
+    const sellPrice = midRate * (1 - WISE_SPREAD_PERCENTAGE); // Sell USD gets less BRL
 
     const quote: Quote = {
       buy_price: parseFloat(buyPrice.toFixed(4)),
@@ -88,7 +98,7 @@ export async function scrapeWise(page: Page): Promise<Quote> {
           mid_market_rate: midRate,
           spread_percentage: WISE_SPREAD_PERCENTAGE,
           raw_text: rateData.rawText,
-          currency_pair: 'BRL/USD',
+          currency_pair: 'USD/BRL',
           provider: 'Wise'
       }
     };
@@ -112,12 +122,13 @@ export function validateWiseQuote(quote: Quote): boolean {
     throw new Error('Invalid price values (must be positive)');
   }
 
-  if (quote.sell_price <= quote.buy_price) {
-    throw new Error('Sell price must be higher than buy price');
+  if (quote.buy_price <= quote.sell_price) {
+    throw new Error('Buy price must be higher than sell price for USD/BRL');
   }
 
-  const MIN_RATE = 0.10;
-  const MAX_RATE = 0.30;
+  // Reasonable range for USD to BRL rate (around 5-6 BRL per USD as of the HTML)
+  const MIN_RATE = 4.0;
+  const MAX_RATE = 7.0;
 
   if (quote.buy_price < MIN_RATE || quote.buy_price > MAX_RATE) {
     throw new Error(`Buy price ${quote.buy_price} outside reasonable range [${MIN_RATE}, ${MAX_RATE}]`);
@@ -138,7 +149,6 @@ export async function scrapeWiseWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      
       const quote = await scrapeWise(page);
       validateWiseQuote(quote);
       
