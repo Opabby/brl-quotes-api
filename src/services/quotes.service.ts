@@ -1,6 +1,7 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { Quote, Average, Slippage } from '../types';
-import { scrapeWiseWithRetry } from '../scrapers/wise';
+import { scrapeWiseWithRetry } from '../data-sources/wise';
+import { scrapeNubankWithRetry } from '../data-sources/nubank';
 
 export class QuotesService {
   private browser: Browser | null = null;
@@ -51,19 +52,47 @@ export class QuotesService {
   private async scrapeFreshQuotes(): Promise<Quote[]> {
     const browser = await this.initBrowser();
     const quotes: Quote[] = [];
+    const errors: { source: string; error: string }[] = [];
 
     try {
-      const wisePage: Page = await browser.newPage();
-      
       try {
+        console.log('[Service] Creating page for Wise...');
+        const wisePage = await browser.newPage();
         const wiseQuote = await scrapeWiseWithRetry(wisePage);
         quotes.push(wiseQuote);
-      } catch (error) {
-        console.error('[Service] ✗ Wise scraping failed:', error);
-        throw error;
-      } finally {
+        console.log('[Service] ✓ Wise scraped successfully');
         await wisePage.close();
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Service] ✗ Wise scraping failed:', errorMsg);
+        errors.push({ source: 'Wise', error: errorMsg });
       }
+
+      try {
+        console.log('[Service] Creating page for Nubank...');
+        const nubankPage = await browser.newPage();
+        const nubankQuote = await scrapeNubankWithRetry(nubankPage);
+        quotes.push(nubankQuote);
+        console.log('[Service] ✓ Nubank scraped successfully');
+        await nubankPage.close();  
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Service] ✗ Nubank scraping failed:', errorMsg);
+        errors.push({ source: 'Nubank', error: errorMsg });
+      }
+
+      if (quotes.length === 0) {
+        throw new Error(`All scrapers failed: ${JSON.stringify(errors)}`);
+      }
+
+      if (errors.length > 0) {
+        console.warn(`[Service] Completed with ${errors.length} error(s):`, errors);
+      }
+      
+      // Update cache
+      // this.cachedQuotes = quotes;
+      // this.cacheTimestamp = Date.now();
+
       return quotes;
 
     } catch (error) {

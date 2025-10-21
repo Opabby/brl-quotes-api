@@ -4,11 +4,13 @@ export interface Quote {
   source: string;
   timestamp?: string;
   additional_info?: {
-    mid_market_rate: number,
-    spread_percentage: number,
-    raw_text: string,
-    currency_pair: string,
-    provider: string,
+    date?: string,
+    mid_market_rate?: number,
+    spread_percentage?: number,
+    raw_text?: string,
+    currency_pair?: string,
+    provider?: string,
+    note?: string
   };
 }
 
