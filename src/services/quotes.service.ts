@@ -1,24 +1,24 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
-import { Quote, Average, Slippage } from '../types';
-import { scrapeWiseWithRetry } from '../data-sources/wise';
-import { scrapeNubankWithRetry } from '../data-sources/nubank';
-import { fetchNomadRate } from '../data-sources/nomad';
+import puppeteer, { Browser, Page } from "puppeteer";
+import { Quote, Average, Slippage } from "../types";
+import { scrapeWiseWithRetry } from "../data-sources/wise";
+import { scrapeNubankWithRetry } from "../data-sources/nubank";
+import { fetchNomadRate } from "../data-sources/nomad";
 
 export class QuotesService {
   private browser: Browser | null = null;
-//   private cachedQuotes: Quote[] | null = null;
-//   private cacheTimestamp: number | null = null;
-//   private readonly CACHE_DURATION_MS = 60000;
+  private cachedQuotes: Quote[] | null = null;
+  private cacheTimestamp: number | null = null;
+  private readonly CACHE_DURATION_MS = 60000;
 
   private async initBrowser(): Promise<Browser> {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
         headless: true,
         args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
         ],
       });
     }
@@ -32,70 +32,72 @@ export class QuotesService {
     }
   }
 
-//   private isCacheValid(): boolean {
-//     if (!this.cachedQuotes || !this.cacheTimestamp) {
-//       return false;
-//     }
+  private isCacheValid(): boolean {
+    if (!this.cachedQuotes || !this.cacheTimestamp) {
+      return false;
+    }
 
-//     const now = Date.now();
-//     const cacheAge = now - this.cacheTimestamp;
-//     const isValid = cacheAge < this.CACHE_DURATION_MS;
+    const now = Date.now();
+    const cacheAge = now - this.cacheTimestamp;
+    const isValid = cacheAge < this.CACHE_DURATION_MS;
 
-//     if (isValid) {
-//       console.log(`[Service] Cache is valid (${Math.round(cacheAge / 1000)}s old)`);
-//     } else {
-//       console.log(`[Service] Cache expired (${Math.round(cacheAge / 1000)}s old)`);
-//     }
+    if (isValid) {
+      console.log(
+        `[Service] Cache is valid (${Math.round(cacheAge / 1000)}s old)`
+      );
+    } else {
+      console.log(
+        `[Service] Cache expired (${Math.round(cacheAge / 1000)}s old)`
+      );
+    }
 
-//     return isValid;
-//   }
+    return isValid;
+  }
 
   private async scrapeFreshQuotes(): Promise<Quote[]> {
     const quotes: Quote[] = [];
     const errors: { source: string; error: string }[] = [];
 
-    // Fetch Nomad rate (API call - no browser needed)
     try {
-      console.log('[Service] Fetching Nomad rate...');
+      console.log("[Service] Fetching Nomad rate...");
       const nomadQuote = await fetchNomadRate();
       quotes.push(nomadQuote);
-      console.log('[Service] ✓ Nomad fetched successfully');
+      console.log("[Service] ✓ Nomad fetched successfully");
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[Service] ✗ Nomad fetch failed:', errorMsg);
-      errors.push({ source: 'Nomad', error: errorMsg });
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      console.error("[Service] ✗ Nomad fetch failed:", errorMsg);
+      errors.push({ source: "Nomad", error: errorMsg });
     }
 
-    // Initialize browser for scraping tasks
     const browser = await this.initBrowser();
 
     try {
-      // Scrape Wise
       try {
-        console.log('[Service] Creating page for Wise...');
+        console.log("[Service] Creating page for Wise...");
         const wisePage = await browser.newPage();
         const wiseQuote = await scrapeWiseWithRetry(wisePage);
         quotes.push(wiseQuote);
-        console.log('[Service] ✓ Wise scraped successfully');
+        console.log("[Service] ✓ Wise scraped successfully");
         await wisePage.close();
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error('[Service] ✗ Wise scraping failed:', errorMsg);
-        errors.push({ source: 'Wise', error: errorMsg });
+        const errorMsg =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error("[Service] ✗ Wise scraping failed:", errorMsg);
+        errors.push({ source: "Wise", error: errorMsg });
       }
 
-      // Scrape Nubank
       try {
-        console.log('[Service] Creating page for Nubank...');
+        console.log("[Service] Creating page for Nubank...");
         const nubankPage = await browser.newPage();
         const nubankQuote = await scrapeNubankWithRetry(nubankPage);
         quotes.push(nubankQuote);
-        console.log('[Service] ✓ Nubank scraped successfully');
-        await nubankPage.close();  
+        console.log("[Service] ✓ Nubank scraped successfully");
+        await nubankPage.close();
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error('[Service] ✗ Nubank scraping failed:', errorMsg);
-        errors.push({ source: 'Nubank', error: errorMsg });
+        const errorMsg =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error("[Service] ✗ Nubank scraping failed:", errorMsg);
+        errors.push({ source: "Nubank", error: errorMsg });
       }
 
       if (quotes.length === 0) {
@@ -103,42 +105,44 @@ export class QuotesService {
       }
 
       if (errors.length > 0) {
-        console.warn(`[Service] Completed with ${errors.length} error(s):`, errors);
+        console.warn(
+          `[Service] Completed with ${errors.length} error(s):`,
+          errors
+        );
       }
-      
-      // Update cache
-      // this.cachedQuotes = quotes;
-      // this.cacheTimestamp = Date.now();
+
+      this.cachedQuotes = quotes;
+      this.cacheTimestamp = Date.now();
 
       return quotes;
-
     } catch (error) {
-      console.error('[Service] Error during data fetching:', error);
-      throw new Error(`Failed to fetch quotes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("[Service] Error during data fetching:", error);
+      throw new Error(
+        `Failed to fetch quotes: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
   async getQuotes(): Promise<Quote[]> {
-
-    // if (this.isCacheValid() && this.cachedQuotes) {
-    //   console.log('[Service] Returning cached quotes');
-    //   return this.cachedQuotes;
-    // }
+    if (this.isCacheValid() && this.cachedQuotes) {
+      console.log("[Service] Returning cached quotes");
+      return this.cachedQuotes;
+    }
 
     const quotes = await this.scrapeFreshQuotes();
 
-    // Update cache
-    // this.cachedQuotes = quotes;
-    // this.cacheTimestamp = Date.now();
-    // console.log('[Service] Cache updated');
+    this.cachedQuotes = quotes;
+    this.cacheTimestamp = Date.now();
+    console.log("[Service] Cache updated");
 
     return quotes;
   }
 
   calculateAverage(quotes: Quote[]): Average {
-
     if (quotes.length === 0) {
-      throw new Error('Cannot calculate average: no quotes available');
+      throw new Error("Cannot calculate average: no quotes available");
     }
 
     const totalBuy = quotes.reduce((sum, quote) => sum + quote.buy_price, 0);
@@ -150,19 +154,24 @@ export class QuotesService {
       timestamp: new Date().toISOString(),
       sources_count: quotes.length,
       additional_info: {
-        calculation_method: 'arithmetic_mean',
-        sources: quotes.map(q => q.source)
-      }
+        calculation_method: "arithmetic_mean",
+        sources: quotes.map((q) => q.source),
+      },
     };
 
     return average;
   }
 
   calculateSlippage(quotes: Quote[], average: Average): Slippage[] {
-
-    const slippages: Slippage[] = quotes.map(quote => {
-      const buySlippage = ((quote.buy_price - average.average_buy_price) / average.average_buy_price) * 100;
-      const sellSlippage = ((quote.sell_price - average.average_sell_price) / average.average_sell_price) * 100;
+    const slippages: Slippage[] = quotes.map((quote) => {
+      const buySlippage =
+        ((quote.buy_price - average.average_buy_price) /
+          average.average_buy_price) *
+        100;
+      const sellSlippage =
+        ((quote.sell_price - average.average_sell_price) /
+          average.average_sell_price) *
+        100;
 
       const slippage: Slippage = {
         buy_price_slippage: parseFloat(buySlippage.toFixed(2)),
@@ -174,8 +183,8 @@ export class QuotesService {
           quote_sell_price: quote.sell_price,
           average_buy_price: average.average_buy_price,
           average_sell_price: average.average_sell_price,
-          provider: quote.additional_info?.provider || 'Unknown'
-        }
+          provider: quote.additional_info?.provider || "Unknown",
+        },
       };
 
       return slippage;
@@ -195,23 +204,25 @@ export class QuotesService {
     return this.calculateSlippage(quotes, average);
   }
 
-//   clearCache(): void {
-//     console.log('[Service] Clearing cache');
-//     this.cachedQuotes = null;
-//     this.cacheTimestamp = null;
-//   }
+  clearCache(): void {
+    console.log("[Service] Clearing cache");
+    this.cachedQuotes = null;
+    this.cacheTimestamp = null;
+  }
 
-//   getCacheStatus(): {
-//     hasCache: boolean;
-//     cacheAge: number | null;
-//     isValid: boolean;
-//   } {
-//     const hasCache = this.cachedQuotes !== null;
-//     const cacheAge = this.cacheTimestamp ? Date.now() - this.cacheTimestamp : null;
-//     const isValid = this.isCacheValid();
+  getCacheStatus(): {
+    hasCache: boolean;
+    cacheAge: number | null;
+    isValid: boolean;
+  } {
+    const hasCache = this.cachedQuotes !== null;
+    const cacheAge = this.cacheTimestamp
+      ? Date.now() - this.cacheTimestamp
+      : null;
+    const isValid = this.isCacheValid();
 
-//     return { hasCache, cacheAge, isValid };
-//   }
+    return { hasCache, cacheAge, isValid };
+  }
 }
 
 export const quotesService = new QuotesService();
