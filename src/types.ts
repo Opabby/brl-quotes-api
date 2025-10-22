@@ -38,3 +38,18 @@ export interface Slippage {
     provider: string,
   }
 }
+
+export interface NomadRateResponse {
+  rate: {
+    value: string;
+    timestamp: string;
+  };
+  iof: {
+    banking: string;
+    investment: string;
+  };
+  spread: {
+    default: string;
+    custom: string;
+  };
+}
