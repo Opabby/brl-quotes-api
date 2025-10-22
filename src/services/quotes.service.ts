@@ -2,6 +2,7 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import { Quote, Average, Slippage } from '../types';
 import { scrapeWiseWithRetry } from '../data-sources/wise';
 import { scrapeNubankWithRetry } from '../data-sources/nubank';
+import { fetchNomadRate } from '../data-sources/nomad';
 
 export class QuotesService {
   private browser: Browser | null = null;
@@ -50,11 +51,26 @@ export class QuotesService {
 //   }
 
   private async scrapeFreshQuotes(): Promise<Quote[]> {
-    const browser = await this.initBrowser();
     const quotes: Quote[] = [];
     const errors: { source: string; error: string }[] = [];
 
+    // Fetch Nomad rate (API call - no browser needed)
     try {
+      console.log('[Service] Fetching Nomad rate...');
+      const nomadQuote = await fetchNomadRate();
+      quotes.push(nomadQuote);
+      console.log('[Service] ✓ Nomad fetched successfully');
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[Service] ✗ Nomad fetch failed:', errorMsg);
+      errors.push({ source: 'Nomad', error: errorMsg });
+    }
+
+    // Initialize browser for scraping tasks
+    const browser = await this.initBrowser();
+
+    try {
+      // Scrape Wise
       try {
         console.log('[Service] Creating page for Wise...');
         const wisePage = await browser.newPage();
@@ -68,6 +84,7 @@ export class QuotesService {
         errors.push({ source: 'Wise', error: errorMsg });
       }
 
+      // Scrape Nubank
       try {
         console.log('[Service] Creating page for Nubank...');
         const nubankPage = await browser.newPage();
@@ -82,7 +99,7 @@ export class QuotesService {
       }
 
       if (quotes.length === 0) {
-        throw new Error(`All scrapers failed: ${JSON.stringify(errors)}`);
+        throw new Error(`All data sources failed: ${JSON.stringify(errors)}`);
       }
 
       if (errors.length > 0) {
@@ -96,8 +113,8 @@ export class QuotesService {
       return quotes;
 
     } catch (error) {
-      console.error('[Service] Error during scraping:', error);
-      throw new Error(`Failed to scrape quotes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[Service] Error during data fetching:', error);
+      throw new Error(`Failed to fetch quotes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
