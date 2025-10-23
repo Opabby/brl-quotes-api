@@ -4,10 +4,11 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
-  },
+  "dev": "tsx watch src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js",
+  "heroku-postbuild": "npm run build && mkdir -p ./.cache && mv /app/.cache/puppeteer ./.cache || true"
+},
   "author": "Thaís Rodeiro",
   "license": "ISC",
   "dependencies": {
