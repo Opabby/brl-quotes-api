@@ -20,6 +20,8 @@ export class QuotesService {
           "--disable-dev-shm-usage",
           "--disable-gpu",
         ],
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
       });
     }
     return this.browser;
