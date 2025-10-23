@@ -20,8 +20,7 @@ export class QuotesService {
           "--disable-dev-shm-usage",
           "--disable-gpu",
         ],
-        executablePath:
-          process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
       });
     }
     return this.browser;
